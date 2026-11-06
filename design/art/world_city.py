@@ -329,8 +329,8 @@ def traffic_light(sq=False):
         o.append(F(E(0, y, 8.6), SIGNAL[k], lift=.5, only="ac" if sq else None))
         o.append(F(E(-2.8, y - 3, 2.4, 1.6, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.8, only="ac"))
         if sq:
-            h = 6 / .92
-            o.append(F(R(-h, y - h, 2 * h, 2 * h), SIGNAL[k], lift=.5, only="b"))
+            hx, hy = 6 / .92, 7.2 / .92      # 3 x 3 pixels (over 3.5 pixels tall, so not drawn as a dot)
+            o.append(F(R(-hx, y - hy, 2 * hx, 2 * hy), SIGNAL[k], lift=.5, only="b"))
     return o
 
 

@@ -3,9 +3,9 @@
     python3 build.py space        # writes app/assets/art/<a|b|c>/space/*.svg and checks them
 
 Built like world_garden.py (the template). The ground is a friendly night sky (deep blue-purple,
-little stars, tiny planets, soft nebula patches); the road is a glowing star path: lavender felt with
-a gold stitch and little embroidered sparkles (a), light purple tiles with glitter and yellow pixel stars (b),
-glowing lilac jelly with candy sparkles (c).
+little stars, tiny planets, soft nebula patches); the road is a glowing star path: lavender felt
+with a gold stitch and little embroidered sparkles (a), light purple tiles with glitter and yellow
+pixel stars (b), glowing lilac jelly with candy sparkles (c).
 
 The sparkles on the road are extra pieces on each tile (SpaceWorld.files): they sit on the road's
 centre line, never closer than 10 units to a tile edge, so they cannot break a seam. SpaceWorld.build
@@ -371,7 +371,7 @@ def gate(st):
         o.append(F(tube(pts, 6.5), "#7FE8FF", lift=.4, fuzz=False, only="ac"))
         o.append(F(R(28, y - 3.5, 44, 7), "#7FE8FF", lift=.4, only="b"))
     o.append(F(tube(crs([(42, 54), (42, 45), (50, 39), (58, 45), (58, 54)], 6, closed=False), 4.6), "#B8BCC8", lift=.6))
-    o.append(F(R(37, 50, 26, 21, 6), PINK, st="#FFE0EF", inset=1.8))
+    o.append(F(R(37, 50, 26, 21, 6), GOLD, st=GOLD_T, inset=1.8))
     o.append(F(U(E(50, 58, 3), R(48.7, 58, 2.6, 7, 1)), DARK, lift=0, fuzz=False, only="ac"))
     o.append(L([(50, 56.5), (50, 64.5)], DARK, 2.0, only="b"))
     return OBJ(o)
@@ -536,8 +536,8 @@ def road_bits(m, st):
             o.append(L([(x - q, y + q), (x + q, y - q)], "#FFE58A", 1.3))
         elif st == "c":
             o += sparkle(x, y, 4.6, "#FFF6B8", lift=0)
-        else:             # a yellow pixel star (a plus)
-            o += sparkle(x, y, 6, "#FFE36B", lift=0)
+        else:             # a yellow pixel star (a plus), each its own object so none gets an outline
+            o += OBJ(sparkle(x, y, 6, "#FFE36B", lift=0), shadow=0)
     return o
 
 

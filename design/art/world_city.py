@@ -320,13 +320,13 @@ def scooter():
     return o
 
 
-def traffic_light(face=False):
-    """A traffic light about 30 x 106 units, its box centre at (0, -16)."""
-    o = [F(R(-3.5, 10, 7, 44, 3), STEEL, lift=.6), F(R(-12, 50, 24, 8, 4), DSTEEL, lift=.6)]
-    o.append(F(R(-15, -48, 30, 62, 10), DSTEEL, st=STEEL_T, inset=2.2))
-    for y, k in ((-33, "r"), (-17, "y"), (-1, "g")):
-        o.append(F(E(0, y, 7.6), SIGNAL[k], lift=.5))
-        o.append(F(E(-2.6, y - 2.8, 2.2, 1.5, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.8))
+def traffic_light():
+    """A traffic light about 34 x 94 units, round (0, 0): a box of three big lamps on a short pole."""
+    o = [F(R(-3.5, 14, 7, 24, 3), STEEL, lift=.6), F(R(-13, 34, 26, 8, 4), DSTEEL, lift=.6)]
+    o.append(F(R(-17, -52, 34, 68, 11), DSTEEL, st=STEEL_T, inset=2.2))
+    for y, k in ((-35, "r"), (-18, "y"), (-1, "g")):
+        o.append(F(E(0, y, 8.2), SIGNAL[k], lift=.5))
+        o.append(F(E(-2.8, y - 3, 2.4, 1.6, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.8))
     return o
 
 
@@ -335,31 +335,30 @@ def house(roof=BLUE, roof_st=BLUE_T, door="#F2574A"):
     o.append(F(R(-30, -8, 60, 44, 4), CREAM, st=CREAM_T, inset=2.4))
     o.append(F(kit.soft(kit.G([(-39, -4), (0, -40), (39, -4)]), 4), roof, st=roof_st, inset=2.6))
     o.append(F(E(0, -16, 5.4), LAMP, lift=.5))
-    o.append(F(R(-8, 10, 16, 26, 7).intersection(sbox(-10, 0, 10, 36)), door, st="#FFE0D8", inset=1.6, lift=.5))
+    o.append(F(R(-8, 10, 16, 26, 7).intersection(sbox(-10, 0, 10, 36)), door, lift=.5))
     o.append(BTN(4, 24, 1.8, "#FFC21F"))
     for x in (-25, 12):
-        o.append(F(R(x, 2, 13, 13, 3), GLASS, st=GLASS_T, inset=1.4, lift=.5))
-        o.append(L([(x + 6.5, 3.5), (x + 6.5, 13.5)], WHITE, 1.5))
-        o.append(L([(x + 1.5, 8.5), (x + 11.5, 8.5)], WHITE, 1.5))
+        o.append(F(R(x, 2, 13, 13, 3), GLASS, lift=.5))
+        o.append(F(E(x + 4.4, 5.8, 2.4, 1.6, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.85))
     return o
 
 
 def shop():
     """A little fruit shop: a striped awning, a window with fruit, a door; an apple on the sign."""
-    o = [F(R(-34, -20, 68, 56, 4), "#FFD8E2", st="#FFFFFF", inset=2.4)]
+    o = [F(R(-34, -20, 68, 56, 4), "#FFD8E2", lift=1)]
     o.append(F(R(-30, -38, 60, 14, 5), TEAL, st=TEAL_T, inset=1.8))
     o.append(F(E(0, -30, 4.6, 4.2), "#F2453D", lift=.4, fuzz=False))
     o.append(F(E(2.4, -35.5, 2.4, 1.3, rot=-30), "#3FBF73", lift=0, fuzz=False))
     aw = U(R(-40, -24, 80, 13, 2), *[E(-35 + 10 * i, -11, 5) for i in range(8)])
-    o.append(F(aw, WHITE, st=None, lift=.8))
+    o.append(F(aw, WHITE, st=None, lift=.8, fuzz=False))
     for i in range(8):
         if i % 2 == 0:
-            o.append(F(aw.intersection(sbox(-40 + 10 * i, -40, -30 + 10 * i, 0)), ORA, lift=0))
-    o.append(F(R(-28, 0, 32, 22, 3), GLASS, st=GLASS_T, inset=1.4, lift=.5))
+            o.append(F(aw.intersection(sbox(-40 + 10 * i, -40, -30 + 10 * i, 0)), ORA, lift=0, fuzz=False))
+    o.append(F(R(-28, 0, 32, 22, 3), GLASS, lift=.5))
     o.append(F(R(-27, 15, 30, 7, 2), WOOD, lift=.4))
     for i, (x, y) in enumerate(((-22, 12), (-15, 12), (-8, 12), (-1, 12), (-18, 6), (-11, 6), (-4, 6))):
         o.append(F(E(x, y, 3.2), ("#F2453D", "#FF9A3C", "#FFE066")[i % 3], lift=.4, fuzz=False))
-    o.append(F(R(10, 0, 18, 36, 3), "#4A8FE7", st="#DCEBFF", inset=1.5, lift=.5))
+    o.append(F(R(10, 0, 18, 36, 3), "#4A8FE7", lift=.5))
     o.append(F(R(13, 4, 12, 12, 2), GLASS, lift=0, fuzz=False))
     o.append(BTN(23, 20, 1.6, "#FFC21F"))
     return o
@@ -377,44 +376,45 @@ def city_tree():
 def bench_lamp():
     o = [F(R(-39, 40, 18, 7, 3.5), DGRN, lift=.6), F(R(-33, -34, 6, 78, 3), DGRN, st=None, lift=.6)]
     o.append(F(R(-43, -49, 24, 6, 3), DGRN, lift=.6))
-    o.append(F(kit.soft(kit.G([(-41, -43), (-23, -43), (-26, -28), (-38, -28)]), 1.6), LAMP, st="#FFFFFF", inset=1.3, lift=.6))
+    o.append(F(kit.soft(kit.G([(-41, -43), (-23, -43), (-26, -28), (-38, -28)]), 1.6), LAMP, lift=.6))
     o.append(BTN(-31, -52, 2.4, DGRN))
     for x in (-12, 30):
         o.append(F(R(x, 14, 5, 22, 2), DSTEEL, lift=.6))
     for y in (-6, 3):
-        o.append(F(R(-18, y, 58, 7, 3.5), WOOD, st=WOOD_T, inset=1.3))
+        o.append(F(R(-18, y, 58, 7, 3.5), WOOD, lift=.8))
     o.append(F(R(-21, 14, 64, 8, 4), WOOD, st=WOOD_T, inset=1.4))
     return o
 
 
 def mailboxes():
-    """Taiwan's pair of post boxes: green and red, with a letter popping out of the red one."""
+    """Taiwan's pair of post boxes, green and red: a domed cap, a slot, a white envelope on the front,
+    one leg."""
     o = []
     for x0, col, st in ((-31, "#2FA65A", "#CDEFD3"), (3, "#E8483F", "#FFE0D8")):
-        o.append(F(R(x0 + 8, 24, 12, 12, 2), DSTEEL, lift=.6))
-        box = U(R(x0, -22, 28, 50, 5), E(x0 + 14, -22, 14, 9))
-        o.append(F(box, col, st=st, inset=2.2))
-        o.append(F(R(x0 + 5, -12, 18, 4.4, 2.2), "#2B2734", lift=0, fuzz=False))
-        o.append(F(R(x0 + 5, 4, 18, 12, 3), kit.lt(col, .25), lift=0))
-    env = kit.G(kit.tf([(-8, -5), (8, -5), (8, 5), (-8, 5)], 17, -18, rot=-14))
-    o.append(F(env, WHITE, st=None, lift=.5))
-    o.append(L(kit.tf([(-7, -4), (0, 1), (7, -4)], 17, -18, rot=-14), "#E8483F", 1.3))
+        o.append(F(R(x0 + 4, 32, 20, 6, 3), DSTEEL, lift=.6))
+        o.append(F(R(x0 + 9, 20, 10, 16, 2), DSTEEL, lift=.6))
+        o.append(F(R(x0 + 2, -14, 24, 38, 4), col, st=st, inset=2))
+        cap = U(R(x0 - 1, -21, 30, 9, 3), E(x0 + 14, -21, 15, 9).intersection(sbox(-60, -40, 60, -20)))
+        o.append(F(cap, kit.dk(col, .18), lift=.6))
+        o.append(F(R(x0 + 6, -8, 16, 3.6, 1.8), "#2B2734", lift=0, fuzz=False))
+        o.append(F(R(x0 + 6, 2, 16, 11, 1.6), WHITE, lift=0, fuzz=False))
+        o.append(L([(x0 + 7.5, 3.5), (x0 + 14, 8.5), (x0 + 20.5, 3.5)], col, 1.5))
     return o
 
 
 def station(sign=True):
     """The bus station round (0, 0): a teal roof on two posts, a glass back, a bench, a platform and
-    a round blue sign with a white bus on top (about 96 x 100 units)."""
-    o = [F(R(-46, 30, 92, 12, 6), PAVE, st=PAVE_T, inset=2.2)]
-    o.append(F(R(-34, -12, 68, 40, 4), GLASS, st=GLASS_T, inset=2.0, lift=.6))
+    a round blue sign with a white bus on top (about 100 x 100 units)."""
+    o = [F(R(-46, 30, 92, 12, 6), PAVE, lift=1)]
+    o.append(F(R(-34, -12, 68, 40, 4), GLASS, lift=.6))
     for x in (-42, 35):
         o.append(F(R(x, -16, 7, 48, 3), STEEL, lift=.6))
     for x in (-23, 17):
         o.append(F(R(x, 16, 5, 14, 2), DSTEEL, lift=.5))
-    o.append(F(R(-27, 1, 54, 7, 3.5), WOOD, st=WOOD_T, inset=1.3, lift=.6))
+    o.append(F(R(-27, 1, 54, 7, 3.5), WOOD, lift=.6))
     o.append(F(R(-29, 11, 58, 8, 4), WOOD, st=WOOD_T, inset=1.4, lift=.6))
     scal = U(R(-48, -18, 96, 6, 2), *[E(-42 + 12 * i, -12, 6) for i in range(8)])
-    o.append(F(scal, WHITE, st=None, lift=.6))
+    o.append(F(scal, WHITE, st=None, lift=.6, fuzz=False))
     top = crs([(-50, -16), (-46, -27), (-26, -35), (0, -38), (26, -35), (46, -27), (50, -16)], 8, closed=False)
     o.append(F(kit.G(top + [(50, -15), (-50, -15)]), TEAL, st=TEAL_T, inset=2.6))
     if sign:
@@ -457,15 +457,15 @@ def home(st):
 def family(st):
     """Home at last: the little bus cuddles up to its family (a big blue bus, a tiny yellow bus) at
     the station."""
-    o = OBJ(place(station(), 200, 150, 2.3))
-    for x, y, s, c in ((40, 120, 14, PINK), (362, 112, 13, "#FF6B6B"), (360, 40, 10, "#FFB3C8"), (42, 40, 9, PINK)):
+    o = OBJ(place(station(), 200, 136, 2.0))
+    for x, y, s, c in ((52, 126, 14, PINK), (350, 118, 13, "#FF6B6B"), (344, 46, 10, "#FFB3C8"), (56, 46, 9, PINK)):
         o += OBJ(place(heart(s, c), x, y))
-    mound = kit.G(crs([(18, 330), (90, 300), (200, 294), (310, 300), (382, 330), (310, 362), (200, 370), (90, 362)], 6))
+    mound = kit.G(crs([(14, 336), (90, 306), (200, 300), (310, 306), (386, 336), (310, 366), (200, 374), (90, 366)], 6))
     o += OBJ([F(mound, LAWN, st="#FFFFFF", inset=4)])
-    o += OBJ(place(bus(BLUE, BLUE_T, happy=True, stripe=YEL), 112, 288, 1.52))
-    o += OBJ(place(bus(happy=True), 254, 304, 1.12, flip=True))
-    o += OBJ(place(bus(YEL, YEL_T, happy=True, cheek=CHEEK, stripe=TEAL), 340, 322, .74, flip=True))
-    for x, y, r in ((24, 236, 10), (378, 236, 10), (120, 22, 8), (284, 20, 8)):
+    o += OBJ(place(bus(BLUE, BLUE_T, happy=True, stripe=YEL), 110, 282, 1.66))
+    o += OBJ(place(bus(happy=True), 258, 300, 1.22, flip=True))
+    o += OBJ(place(bus(YEL, YEL_T, happy=True, cheek=CHEEK, stripe=TEAL), 348, 322, .82, flip=True))
+    for x, y, r in ((26, 230, 10), (376, 226, 10), (128, 28, 8), (276, 26, 8)):
         o += OBJ(sparkle(x, y, r), shadow=0)
     return o
 
@@ -483,15 +483,18 @@ def key(st):
 
 
 def gate(st):
-    """A red-and-white barrier arm standing across a left-right road: its post box below the road,
-    the arm resting on a little post above it, a padlock in the middle."""
-    o = [F(R(42, 2, 16, 9, 3), STEEL, lift=.6)]
-    arm = R(42, 5, 16, 84, 8)
+    """A red-and-white barrier arm standing across a left-right road: its post box below the road
+    (with the pivot), the arm resting on a little post above it, a padlock in the middle."""
+    o = [F(R(40, 0, 20, 10, 4), STEEL, lift=.6)]
+    arm = R(40, 4, 20, 86, 10)
     o.append(F(arm, WHITE, st=None))
-    for y0 in (5, 31, 57):
-        o.append(F(arm.intersection(sbox(30, y0 + 13, 70, y0 + 26)), "#F2453D", lift=0))
-    o.append(F(E(50, 10, 4), "#FF4D4D", lift=.5, fuzz=False))
-    o.append(F(R(32, 80, 36, 17, 6), YEL, st=YEL_T, inset=2))
+    for k in range(-1, 6):
+        y0 = 4 + 18 * k
+        band = kit.G([(30, y0 + 12), (70, y0 + 2), (70, y0 + 11), (30, y0 + 21)])
+        o.append(F(arm.intersection(band), "#F2453D", lift=0, fuzz=False))
+    o.append(F(E(50, 11, 4.4), "#FF4D4D", lift=.5, fuzz=False))
+    o.append(F(R(30, 78, 40, 20, 7), YEL, st=YEL_T, inset=2))
+    o.append(BTN(50, 86, 5, STEEL))
     o.append(F(tube(crs([(43, 52), (43, 42), (50, 36), (57, 42), (57, 52)], 6, closed=False), 4.4), "#B8BCC8", lift=.6))
     o.append(F(R(38, 47, 24, 20, 5.5), "#FFC83D", st="#FFF6CF", inset=1.8))
     o.append(F(U(E(50, 54.5, 3), R(48.7, 54.5, 2.6, 7, 1)), DARK, lift=0, fuzz=False, only="ac"))
@@ -508,7 +511,7 @@ def deco_tree(st):
 
 
 def deco_light(st):
-    return place(OBJ(traffic_light()), 50, 49, .82)
+    return place(OBJ(traffic_light()), 50, 54, .92)
 
 
 def deco_shop(st):
@@ -529,7 +532,7 @@ def s_bus(st):
 
 
 def s_light(st):
-    return place(OBJ(traffic_light()), 100, 102, 1.25)
+    return place(OBJ(traffic_light()), 100, 106, 1.62)
 
 
 def s_taxi(st):
@@ -541,7 +544,7 @@ def s_fire(st):
 
 
 def s_police(st):
-    return place(OBJ(car(WHITE, "#C9CFE0", "police")), 100, 106, 1.5)
+    return place(OBJ(car("#3D6FE0", "#DCE6FF", "police")), 100, 106, 1.5)
 
 
 def s_bike(st):
@@ -573,7 +576,7 @@ def card(st):
     o = [kit.ground_piece(WORLD, st)]
     o += OBJ(place(city_tree(), 128, 48, .5))
     o += OBJ(place(house(), 40, 52, .62))
-    o += OBJ(place(traffic_light(), 200, 160, .42))
+    o += OBJ(place(traffic_light(), 202, 160, .54))
     o += OBJ(place(shop(), 268, 166, .5))
     o += OBJ(grass(86, 104, .9)) + OBJ(grass(150, 186, .8))
     o.append(kit.road_piece(WORLD, st, road, width=48))
@@ -596,9 +599,9 @@ def bits(st):
         x, y = rnd.uniform(24, 576), rnd.uniform(24, 776)
         t = i % 4
         if t == 0:
-            bed = [F(R(-16, -5, 32, 10, 5), SOIL, lift=.6)]
+            bed = [F(R(-18, -7, 36, 14, 5), "#E9E8E1", lift=.6, fuzz=False), F(R(-14.5, -3.5, 29, 7, 3), SOIL, lift=0)]
             for k, dx in enumerate((-9, 0, 9)):
-                bed.append(F(E(dx, -5, 3.2), ("#FF6B6B", "#FFE066", "#FFFFFF", "#FF9EC1")[(i + k) % 4], lift=.5, fuzz=False))
+                bed.append(F(E(dx, -3, 3.4), ("#FF6B6B", "#FFE066", "#FFFFFF", "#FF9EC1")[(i + k) % 4], lift=.5, fuzz=False))
             o += place(bed, x, y, rot=rnd.uniform(-10, 10))
         elif t == 1:
             for k, (dx, dy) in enumerate(((-14, 2), (0, -2), (14, 2))):

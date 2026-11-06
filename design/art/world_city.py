@@ -320,13 +320,17 @@ def scooter():
     return o
 
 
-def traffic_light():
-    """A traffic light about 34 x 94 units, round (0, 0): a box of three big lamps on a short pole."""
-    o = [F(R(-3.5, 14, 7, 24, 3), STEEL, lift=.6), F(R(-13, 34, 26, 8, 4), DSTEEL, lift=.6)]
-    o.append(F(R(-17, -52, 34, 68, 11), DSTEEL, st=STEEL_T, inset=2.2))
-    for y, k in ((-35, "r"), (-18, "y"), (-1, "g")):
-        o.append(F(E(0, y, 8.2), SIGNAL[k], lift=.5))
-        o.append(F(E(-2.8, y - 3, 2.4, 1.6, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.8))
+def traffic_light(sq=False):
+    """A traffic light about 34 x 102 units, round (0, 0): a box of three big lamps on a short pole.
+    sq: pixel lamps as squares that land on whole pixels (only right for deco_3's placement)."""
+    o = [F(R(-3.5, 14, 7, 24, 3), STEEL, lift=.6), F(R(-13, 36, 26, 8, 4), DSTEEL, lift=.6)]
+    o.append(F(R(-17, -57, 34, 72, 11), DSTEEL, st=STEEL_T, inset=2.2))
+    for y, k in ((-20 / .46, "r"), (-10 / .46, "y"), (0, "g")):
+        o.append(F(E(0, y, 8.6), SIGNAL[k], lift=.5, only="ac" if sq else None))
+        o.append(F(E(-2.8, y - 3, 2.4, 1.6, rot=-30), "#FFFFFF", lift=0, fuzz=False, op=.8, only="ac"))
+        if sq:
+            h = 6 / .92
+            o.append(F(R(-h, y - h, 2 * h, 2 * h), SIGNAL[k], lift=.5, only="b"))
     return o
 
 
@@ -387,18 +391,20 @@ def bench_lamp():
 
 
 def mailboxes():
-    """Taiwan's pair of post boxes, green and red: a domed cap, a slot, a white envelope on the front,
-    one leg."""
+    """Taiwan's pair of post boxes, green and red: a domed cap, one leg, a slot under the cap with a
+    letter going in."""
     o = []
-    for x0, col, st in ((-31, "#2FA65A", "#CDEFD3"), (3, "#E8483F", "#FFE0D8")):
+    for x0, col, st, rot in ((-31, "#2FA65A", "#CDEFD3", 12), (3, "#E8483F", "#FFE0D8", -12)):
         o.append(F(R(x0 + 4, 32, 20, 6, 3), DSTEEL, lift=.6))
         o.append(F(R(x0 + 9, 20, 10, 16, 2), DSTEEL, lift=.6))
         o.append(F(R(x0 + 2, -14, 24, 38, 4), col, st=st, inset=2))
         cap = U(R(x0 - 1, -21, 30, 9, 3), E(x0 + 14, -21, 15, 9).intersection(sbox(-60, -40, 60, -20)))
         o.append(F(cap, kit.dk(col, .18), lift=.6))
-        o.append(F(R(x0 + 6, -8, 16, 3.6, 1.8), "#2B2734", lift=0, fuzz=False))
-        o.append(F(R(x0 + 6, 2, 16, 11, 1.6), WHITE, lift=0, fuzz=False))
-        o.append(L([(x0 + 7.5, 3.5), (x0 + 14, 8.5), (x0 + 20.5, 3.5)], col, 1.5))
+        o.append(F(R(x0 + 6, -7, 16, 3.6, 1.8), "#2B2734", lift=0, fuzz=False))
+        env = kit.tf([(-7, -9), (7, -9), (7, 1), (-7, 1)], x0 + 14, -5.5, rot=rot)
+        o.append(F(kit.G(env), WHITE, lift=.5, fuzz=False, only="ac"))
+        o.append(L(kit.tf([(-5.6, -7.6), (0, -3.6), (5.6, -7.6)], x0 + 14, -5.5, rot=rot), col, 1.3, only="ac"))
+        o.append(F(R(x0 + 8, -16, 12, 10), WHITE, lift=.5, fuzz=False, only="b"))
     return o
 
 
@@ -511,7 +517,7 @@ def deco_tree(st):
 
 
 def deco_light(st):
-    return place(OBJ(traffic_light()), 50, 54, .92)
+    return place(OBJ(traffic_light(sq=True)), 50, 54, .92)
 
 
 def deco_shop(st):

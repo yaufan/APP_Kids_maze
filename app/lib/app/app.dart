@@ -34,10 +34,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
-      GoRoute(path: '/world/:world', builder: (_, s) => WorldScreen(world: World.values.byName(s.pathParameters['world']!))),
+      GoRoute(path: '/world/:world', builder: (_, s) => WorldScreen(key: ValueKey(s.matchedLocation), world: World.values.byName(s.pathParameters['world']!))),
       GoRoute(
         path: '/play/:world/:mode',
-        builder: (_, s) => PlayScreen(world: World.values.byName(s.pathParameters['world']!), mode: Mode.values.byName(s.pathParameters['mode']!)),
+        // A new maze for each world and game, even when one replaces another.
+        builder: (_, s) => PlayScreen(
+          key: ValueKey(s.matchedLocation),
+          world: World.values.byName(s.pathParameters['world']!),
+          mode: Mode.values.byName(s.pathParameters['mode']!),
+        ),
       ),
       GoRoute(path: '/stickers', builder: (_, _) => const StickerScreen()),
       GoRoute(path: '/rest', builder: (_, _) => const RestScreen()),

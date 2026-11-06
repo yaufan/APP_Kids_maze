@@ -579,7 +579,58 @@ def bits(st):
     return o
 
 
-WORLD = kit.World(
+# ---------------------------------------------------------------- felt road tiles: hairs that fade at the seams
+_KIT_HAIRS = kit._hairs
+
+
+def _tile_hairs(c, g, col, key, k=1.0):
+    """kit._hairs, except that on a road tile every hair shrinks to nothing within 3 dp of the tile's
+    edges (as kit.wobble does for the outline). kit's own hairs are random per tile and do not fade,
+    so a stray hair could cross a seam on one tile and not on its neighbour (`seams` caught it)."""
+    if c.kind != "tile":
+        return _KIT_HAIRS(c, g, col, key, k)
+    np_ = kit.np
+    u = c.u
+    dens = kit.KIND[c.kind].get("dens", 1.0)
+    rnd = c.rnd(key, "hair")
+    light = kit.colorsys.rgb_to_hls(*[x / 255 for x in kit._rgb(col)])[1] > .72
+    stray = kit.dk(col, .12) if light else kit.lt(col, .22)
+    lines = {col: [], stray: []}
+    for poly in kit.polys(g):
+        for ring in kit._oriented_rings(poly):
+            for cc, step, reach in ((col, 1.35 * u / dens, (.6 * k, 1.8 * k)), (stray, 3.2 * u / dens, (.5 * k, 1.4 * k))):
+                P, _ = kit._ring_pts(ring, step)
+                Nn = kit._normals(P)
+                T = np_.stack([-Nn[:, 1], Nn[:, 0]], 1)
+                fade = c.taper(P, 3 * u)
+                run = []
+                for i, ((x, y), (nx, ny), (tx, ty), f) in enumerate(zip(P, Nn, T, fade)):
+                    j = rnd.uniform(-.3, .3) * step * f
+                    r = (rnd.uniform(*reach) if i % 2 else -rnd.uniform(.25, .55)) * u * f
+                    q = (x + nx * r + tx * j, y + ny * r + ty * j)
+                    if .4 < q[0] < c.W - .4 and .4 < q[1] < c.H - .4:
+                        run.append(q)
+                    else:
+                        if len(run) > 1:
+                            lines[cc].append(run)
+                        run = []
+                if len(run) > 1:
+                    lines[cc].append(run + ([run[0]] if len(run) == len(P) else []))
+    for cc, ls in lines.items():
+        if ls:
+            c.stroke(kit._lines_d(ls), cc, (.5 if cc == col else .42) * u)
+
+
+class SnowWorld(kit.World):
+    def build(self, *a, **kw):
+        kit._hairs = _tile_hairs          # only while this world is written; put back afterwards
+        try:
+            return super().build(*a, **kw)
+        finally:
+            kit._hairs = _KIT_HAIRS
+
+
+WORLD = SnowWorld(
     "snow", "雪地",
     road=ROAD, ground=GROUND, pixel=PIXEL, jelly=JELLY, bits=bits, sticker=STICKER,
     hero=hero, home=home, family=family, star=star, key=key, gate=gate,

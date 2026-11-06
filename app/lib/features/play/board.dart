@@ -46,7 +46,9 @@ class Board extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (_, box) {
-        final s = cellIn(maze, box.biggest);
+        // Whole device pixels, so the road tiles meet without hairline gaps.
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        final s = (cellIn(maze, box.biggest) * dpr).floorToDouble() / dpr;
         final w = s * maze.cols, h = s * maze.rows;
         Rect rect(Cell c, [double scale = 1]) {
           final size = s * scale;

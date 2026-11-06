@@ -26,8 +26,15 @@ every file of a world; `check_svg()` enforces the flutter_svg rules and `check_w
 
 flutter_svg limits (hard rules, enforced by check_svg): no <filter>, <mask>, <style>, style=, CSS,
 <text>, <image>, <foreignObject>, <pattern>, blend modes; every drawing element carries its own
-fill/stroke attribute; under ~70 KB and fewer than 800 <use> per file. This kit writes no <use> and
-no clip paths at all: shapes are clipped with shapely before they are written.
+fill/stroke attribute; under ~70 KB and fewer than 800 <use> per file. No clip paths at all: shapes
+are clipped with shapely before they are written. <use> only paints a <defs> path twice (felt: the
+piece and its shadow, a stitch and its shadow), with its own paint and at most a translate. Radial and
+linear gradients (objectBoundingBox) are used for jelly bodies, buttons and the candy ground.
+
+File size: everything is drawn on a grid VQ = 2 times finer than the viewBox and written as whole
+steps inside <g transform="scale(.5)"> (0.15-0.3 dp on screen); stray strokes (fuzz, fibres) are
+one path per colour with relative moves; pixel art is one path per colour (one fill path for the
+most common colour under everything, so no hairline seams show between pixels).
 
 ------------------------------------------------------------------------------------------------
 THE ROAD TILES (docs/art.md): tile_<n>.svg, n = up 1 + right 2 + down 4 + left 8. `tile_geom(n)` is
@@ -51,12 +58,14 @@ HOW TO DESCRIBE A WORLD (copy world_garden.py)
         road={"a": dict(fill=..., stitch=...),                      # felt path and its stitch
               "b": dict(fill=..., speck=..., shade=..., light=..., border=...),   # pixel road
               "c": dict(body=..., rim=..., glow=..., shadow=...)},  # jelly road
-        ground={"a": dict(base=..., fibres=(light, dark)),          # felt cloth
-                "b": dict(base=..., specks=[(colour, chance), ...], stamps=[(rows, palette, per_1000px)]),
-                "c": dict(top=..., bottom=..., sprinkles=(colours...), n=per_10000_units)},
+        ground={"a": dict(base=..., fibres=(light, dark)),          # felt cloth (+ `bits` sewn on it)
+                "b": dict(base=..., specks=[(colour, chance per pixel), ...],
+                          stamps=[(rows like [".p.", "pyp", ".p."], {char: colour} or a list of them, per 1000 px)]),
+                "c": dict(top=..., bottom=..., swirl=..., sprinkles=(colours...), n=per 10000 units²)},
         pixel=dict(outline=..., palette=[...], map={felt colour: pixel colour}),
         jelly=dict(shadow=..., map={felt colour: jelly colour}),
         bits=fn(style) -> pieces,           # small things sewn/printed on the bg (optional)
+        sticker=dict(fill=, stitch=, fill_b=, fill_c=),   # the round sticker's colours (optional)
         hero=fn, home=fn, family=fn, star=fn, key=fn, gate=fn,      # fn(style) -> pieces
         deco=[6 fns], stickers=[10 fns], card=fn)
     W.build()
@@ -100,7 +109,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import shapely
 from shapely import affinity
-from shapely.geometry import LineString, MultiLineString, Point, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry import box as sbox
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge, substring, unary_union
@@ -115,13 +124,15 @@ KIND = {
     "tile": dict(w=100, h=100, K=.55, px=4),
     "item": dict(w=100, h=100, K=.55, px=4),     # hero, home, star, key, gate, deco_n
     "bg": dict(w=600, h=800, K=.6, px=5),
-    "family": dict(w=400, h=400, K=.8, px=5),
+    "family": dict(w=400, h=400, K=.62, px=5, dens=.6),   # dens < 1: fewer felt hairs and fibres (big file)
     "sticker": dict(w=200, h=200, K=.5, px=5),
-    "card": dict(w=300, h=200, K=.55, px=5),
+    "card": dict(w=300, h=200, K=.55, px=4),
     "tudou": dict(w=200, h=200, K=.7, px=5),
 }
 ROAD0, ROAD1 = 19.0, 81.0       # the road band on a tile (docs/art.md)
 HALF = (ROAD1 - ROAD0) / 2      # 31
+VQ = 2          # files are drawn on a grid VQ times finer than their viewBox, path data in whole steps
+                # (half units: 0.15-0.3 dp on screen), inside <g transform="scale(.5)">
 EXT = 30.0                      # how far an open side is extended beyond the tile edge
 
 # common colours (style a)
@@ -394,7 +405,7 @@ def place(pieces, dx=0.0, dy=0.0, s=1.0, rot=0.0, flip=False):
     m = [s * math.cos(a) * fx, -s * math.sin(a), s * math.sin(a) * fx, s * math.cos(a), dx, dy]
     out = []
     for p in pieces:
-        if p.kind in ("road", "ground"):
+        if p.kind == "ground":
             out.append(p)
             continue
         q = p.copy(geom=affinity.affine_transform(p.geom, m), w=p.w * s, r=p.r * s)
@@ -409,22 +420,26 @@ def recolor(pieces, cmap):
 
 
 # ================================================================ path data
+PQ = [10]     # path data quantum (steps per unit); render() sets 1 when it draws on a virtual grid
+
+
 def pd(pts, closed=True):
-    """Compact path data: an absolute move, then relative lines in tenths of a unit."""
+    """Compact path data: an absolute move, then relative lines on the PQ grid."""
+    Q = PQ[0]
     q = []
     for x, y in pts:
-        t = (round(x * 10), round(y * 10))
+        t = (round(x * Q), round(y * Q))
         if not q or t != q[-1]:
             q.append(t)
     if closed and len(q) > 1 and q[-1] == q[0]:
         q.pop()
     if not q:
         return ""
-    s = "M" + _join([n(q[0][0] / 10), n(q[0][1] / 10)])
+    s = "M" + _join([n(q[0][0] / Q), n(q[0][1] / Q)])
     if len(q) > 1:
         nums = []
         for (x0, y0), (x1, y1) in zip(q, q[1:]):
-            nums += [n((x1 - x0) / 10), n((y1 - y0) / 10)]
+            nums += [n((x1 - x0) / Q), n((y1 - y0) / Q)]
         s += "l" + _join(nums)
     return s + ("z" if closed else "")
 
@@ -454,7 +469,9 @@ class Ctx:
     def __init__(self, name, style, kind, world=None):
         k = KIND[kind]
         self.name, self.style, self.kind, self.world = name, style, kind, world
-        self.W, self.H, self.K, self.px = k["w"], k["h"], k["K"], k["px"]
+        self.q = q = k.get("q", VQ)        # drawing on a virtual grid q times finer than the viewBox
+        self.W, self.H, self.K, self.px = k["w"] * q, k["h"] * q, k["K"] / q, k["px"] * q
+        self.vw, self.vh = k["w"], k["h"]
         self.u = 1.0 / self.K              # units per screen dp
         self.box = sbox(0, 0, self.W, self.H)
         shapely.prepare(self.box)
@@ -486,6 +503,22 @@ class Ctx:
         rule = ' fill-rule="evenodd"' if has_holes(g) else ""
         self.body.append(f'<path d="{d}" fill="{col}"{rule}{_op(op)}/>')
 
+    def defpath(self, d):
+        """Path data written once in <defs>; paint it with use()."""
+        self.nid = getattr(self, "nid", 0) + 1
+        pid = f"p{self.nid}"
+        self.defs.append(f'<path id="{pid}" d="{d}"/>')
+        return pid
+
+    def use(self, pid, fill=None, stroke=None, w=None, op=1.0, dx=0.0, dy=0.0, rule=False):
+        t = f' transform="translate({n(dx)} {n(dy)})"' if (dx or dy) else ""
+        if stroke:
+            ws = n(w) if w >= .95 else f"{max(w, .2):.2f}".lstrip("0")
+            paint = f'fill="none" stroke="{stroke}" stroke-width="{ws}" stroke-linecap="round" stroke-linejoin="round"'
+        else:
+            paint = f'fill="{fill}"' + (' fill-rule="evenodd"' if rule else "")
+        self.body.append(f'<use href="#{pid}" {paint}{_op(op)}{t}/>')
+
     def stroke(self, d, col, w, op=1.0, extra="", cap="round"):
         if not d:
             return
@@ -514,8 +547,11 @@ class Ctx:
 
     def svg(self):
         defs = f"<defs>{''.join(self.defs)}</defs>" if self.defs else ""
-        return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n(self.W)} {n(self.H)}" '
-                f'width="{n(self.W)}" height="{n(self.H)}">{defs}{"".join(self.body)}</svg>\n')
+        body = "".join(self.body)
+        if self.q != 1:
+            body = f'<g transform="scale({1 / self.q:g})">{body}</g>'
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n(self.vw)} {n(self.vh)}" '
+                f'width="{n(self.vw)}" height="{n(self.vh)}">{defs}{body}</svg>\n')
 
     # colours of a piece in this style
     def colour(self, p, c=None):
@@ -612,26 +648,29 @@ def _seg_d(segs, sort=False):
         segs = sorted(segs, key=lambda s: (int(s[0][1] // 12), s[0][0] if int(s[0][1] // 12) % 2 == 0 else -s[0][0]))
     out = []
     cur = None
+    Q = PQ[0]
     for (x0, y0), (x1, y1) in segs:
-        a = (round(x0 * 10), round(y0 * 10))
-        b = (round(x1 * 10), round(y1 * 10))
+        a = (round(x0 * Q), round(y0 * Q))
+        b = (round(x1 * Q), round(y1 * Q))
         if a == b:
             continue
         if cur is None:
-            out.append("M" + _join([n(a[0] / 10), n(a[1] / 10)]))
+            out.append("M" + _join([n(a[0] / Q), n(a[1] / Q)]))
         else:
-            out.append("m" + _join([n((a[0] - cur[0]) / 10), n((a[1] - cur[1]) / 10)]))
-        out.append("l" + _join([n((b[0] - a[0]) / 10), n((b[1] - a[1]) / 10)]))
+            out.append("m" + _join([n((a[0] - cur[0]) / Q), n((a[1] - cur[1]) / Q)]))
+        out.append("l" + _join([n((b[0] - a[0]) / Q), n((b[1] - a[1]) / Q)]))
         cur = b
     return "".join(out)
 
 
 # ================================================================ STYLE A: felt
 def _felt_shadow(c, g, dx, dy, spread, op):
+    """A soft shadow: a wider faint layer (spread) and the shape itself (op; 0 = only the wide one)."""
     sh = affinity.translate(g, dx, dy)
     if spread and bounds_size(g) > 14 * c.u:
-        c.fill(sh.buffer(spread), SHADOW, op * .45, tol=.5 * c.u)
-    c.fill(sh, SHADOW, op, tol=.45 * c.u)
+        c.fill(sh.buffer(spread), SHADOW, (op or .17) * .45, tol=.6 * c.u)
+    if op:
+        c.fill(sh, SHADOW, op, tol=.45 * c.u)
 
 
 def _fibres(c, g, col, key, per, length=(1.0, 2.1), cols=None):
@@ -644,7 +683,7 @@ def _fibres(c, g, col, key, per, length=(1.0, 2.1), cols=None):
     x0, y0, x1, y1 = inner.bounds
     x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, c.W), min(y1, c.H)
     area = c.clip(inner).area
-    cnt = int(area / (per * u) ** 2)
+    cnt = int(area * KIND[c.kind].get("dens", 1.0) ** 2 / (per * u) ** 2)
     if cnt < 2:
         return
     rnd = c.rnd(key, "fib")
@@ -665,30 +704,41 @@ def _fibres(c, g, col, key, per, length=(1.0, 2.1), cols=None):
             c.stroke(_seg_d(s, sort=True), cc, .42 * u)
 
 
-def _hairs(c, g, col, key):
-    """The fuzz: short strokes across the edge, mostly outwards."""
+def _hairs(c, g, col, key, k=1.0):
+    """The fuzz: one jagged hair line along each edge. Its corners alternate just inside the edge
+    and 0.6-1.8 dp outside it, at random, so every stroke of the line is one slanted hair (half
+    the bytes of separate hairs). A sparser second line in a lighter colour adds stray fibres."""
     u = c.u
+    dens = KIND[c.kind].get("dens", 1.0)
     rnd = c.rnd(key, "hair")
-    cols = (col, lt(col, .2))
-    segs = {cc: [] for cc in cols}
+    light = colorsys.rgb_to_hls(*[x / 255 for x in _rgb(col)])[1] > .72
+    stray = dk(col, .12) if light else lt(col, .22)      # pale felt: stray fibres a little darker, not a white halo
+    lines = {col: [], stray: []}
     for pi, poly in enumerate(polys(g)):
         for ring in _oriented_rings(poly):
-            P, _ = _ring_pts(ring, 2.2 * u)
-            Nn = _normals(P)
-            for (x, y), (nx, ny) in zip(P, Nn):
-                a = rnd.uniform(-.95, .95)
-                ln = rnd.uniform(.9, 2.0) * u
-                dx = nx * math.cos(a) - ny * math.sin(a)
-                dy = nx * math.sin(a) + ny * math.cos(a)
-                sx, sy = x - nx * .45 * u, y - ny * .45 * u
-                ex, ey = sx + dx * ln, sy + dy * ln
-                if min(sx, ex) <= .3 or min(sy, ey) <= .3 or max(sx, ex) >= c.W - .3 or max(sy, ey) >= c.H - .3:
-                    continue
-                r = rnd.random()
-                segs[cols[0 if r < .62 else 1]].append(((sx, sy), (ex, ey)))
-    for cc, s in segs.items():
-        if s:
-            c.stroke(_seg_d(s), cc, .5 * u)
+            for cc, step, reach in ((col, 1.35 * u / dens, (.6 * k, 1.8 * k)), (stray, 3.2 * u / dens, (.5 * k, 1.4 * k))):
+                P, _ = _ring_pts(ring, step)
+                Nn = _normals(P)
+                T = np.stack([-Nn[:, 1], Nn[:, 0]], 1)
+                run = []
+                for i, ((x, y), (nx, ny), (tx, ty)) in enumerate(zip(P, Nn, T)):
+                    j = rnd.uniform(-.3, .3) * step
+                    if i % 2:
+                        r = rnd.uniform(*reach) * u
+                    else:
+                        r = -rnd.uniform(.25, .55) * u
+                    q = (x + nx * r + tx * j, y + ny * r + ty * j)
+                    if .4 < q[0] < c.W - .4 and .4 < q[1] < c.H - .4:
+                        run.append(q)
+                    else:
+                        if len(run) > 1:
+                            lines[cc].append(run)
+                        run = []
+                if len(run) > 1:
+                    lines[cc].append(run + ([run[0]] if len(run) == len(P) else []))
+    for cc, ls in lines.items():
+        if ls:
+            c.stroke(_lines_d(ls), cc, (.5 if cc == col else .42) * u)
 
 
 def _stitch(c, g, col, inset_dp, key, w_dp=1.6, dash=(4.8, 3.4)):
@@ -717,9 +767,11 @@ def _stitch(c, g, col, inset_dp, key, w_dp=1.6, dash=(4.8, 3.4)):
     segs = [list(LineString(s).simplify(.12 * u).coords) for s in segs]
     d = _lines_d(segs)
     if w_dp > 1.4:
-        sd = _lines_d([[(x + .3 * u, y + .65 * u) for x, y in s] for s in segs])
-        c.stroke(sd, SHADOW, (w_dp + .45) * u, .24)
-    c.stroke(d, col, w_dp * u)
+        pid = c.defpath(d)
+        c.use(pid, stroke=SHADOW, w=(w_dp + .45) * u, op=.24, dx=.3 * u, dy=.65 * u)
+        c.use(pid, stroke=col, w=w_dp * u)
+    else:
+        c.stroke(d, col, w_dp * u)
 
 
 def felt_piece(c, p, key, road=False):
@@ -729,21 +781,39 @@ def felt_piece(c, p, key, road=False):
         return
     col = c.colour(p)
     size = bounds_size(g)
-    if p.lift and not road:
-        _felt_shadow(c, g, .35 * u * p.lift, 1.0 * u * p.lift, .55 * u, .17)
     fuzzy = p.fuzz and size > 4 * u
     wob = wobble(c, g, .42 * u, 2.0 * u, key) if fuzzy else g
-    c.fill(wob, col, p.op)
+    if road:
+        c.fill(wob, col, p.op)
+    else:
+        cw = c.clip(wob)
+        d = gd(cw)
+        if not d:
+            return
+        pid = c.defpath(d)
+        if p.lift:
+            if size > 14 * u:
+                _felt_shadow(c, g, .35 * u * p.lift, 1.0 * u * p.lift, .55 * u, 0)
+            c.use(pid, fill=SHADOW, op=.17, dx=.35 * u * p.lift, dy=1.0 * u * p.lift, rule=has_holes(cw))
+        c.use(pid, fill=col, op=p.op, rule=has_holes(cw))
+    dens = KIND[c.kind].get("dens", 1.0)
     if p.shade and size > 6 * u:
         d1 = min(1.5 * u, size * .1)
-        if size > 30 * u:
-            c.fill(wob.difference(affinity.translate(wob, -2.6 * u, -2.6 * u)), dk(col, .07), tol=.35 * u)
-        c.fill(wob.difference(affinity.translate(wob, -d1, -d1)), dk(col, .08), tol=.35 * u)
-        c.fill(wob.difference(affinity.translate(wob, d1 * .7, d1 * .7)), lt(col, .3), tol=.35 * u)
-    if size > 12 * u:
+        sm = g.simplify(.25 * u)
+
+        def band(dx, dy):     # the part of the piece near its edge on one side: smooth inside, fuzzy outside
+            return wob.intersection(sm.difference(affinity.translate(sm, dx, dy)).buffer(.6 * u))
+        if size > 30 * u and KIND[c.kind].get("dens", 1.0) >= 1:
+            c.fill(band(-2.6 * u, -2.6 * u), dk(col, .07), tol=.3 * u)
+        tb = .3 * u / dens
+        c.fill(band(-d1, -d1), dk(col, .08), tol=tb)
+        c.fill(band(d1 * .7, d1 * .7), lt(col, .3), tol=tb)
+    dens = KIND[c.kind].get("dens", 1.0)
+    if size > (12 if dens >= 1 else 40) * u:
         _fibres(c, wob, col, key, 7.5)
     if fuzzy and size > 12 * u and (p.lift or road):
-        _hairs(c, wob, col, key)
+        thick = 2 * g.area / max(g.length, 1e-6)        # thin pieces (a key, a stem) get shorter fuzz
+        _hairs(c, wob, col, key, min(1.0, .3 + thick / (20 * u)))
     if p.st:
         ins = p.inset if p.inset is not None else 3.4
         sw = 1.6 if size > 14 * u else 1.25
@@ -791,13 +861,15 @@ def felt_ground(c, p):
     base = d["base"]
     c.body.append(f'<path d="M0 0h{n(c.W)}v{n(c.H)}h-{n(c.W)}z" fill="{base}"/>')
     rnd = c.rnd("mottle")
-    for i in range(int(c.W * c.H / 9000)):
+    # a soft mottle: a few big pale and dark patches (felt is never quite even)
+    q = c.q
+    for i in range(int(c.vw * c.vh / 15000)):
         x, y = rnd.uniform(0, c.W), rnd.uniform(0, c.H)
-        rx, ry = rnd.uniform(20, 46), rnd.uniform(14, 34)
-        blob = wobble(c, E(x, y, rx, ry, rot=rnd.uniform(0, 180)), 3, 6, ("mot", i))
-        c.fill(blob, lt(base, .07) if i % 2 else dk(base, .045), tol=.6)
+        rx, ry = rnd.uniform(24, 52) * q, rnd.uniform(16, 36) * q
+        blob = wobble(c, E(x, y, rx, ry, rot=rnd.uniform(0, 180)), 2.5 * q, 9 * q, ("mot", i))
+        c.fill(blob, lt(base, .07) if i % 2 else dk(base, .045), tol=1.0)
     cols = d.get("fibres") or (lt(base, .2), dk(base, .09))
-    _fibres(c, c.box.buffer(10), base, "ground", d.get("per", 8.5), (1.2, 2.6), cols)
+    _fibres(c, c.box.buffer(10), base, "ground", d.get("per", 9.5), (1.2, 2.6), cols)
 
 
 def felt_road(c, p, key):
@@ -874,13 +946,29 @@ class PixGrid:
         return int(math.floor(y / px)) + self.M, int(math.floor(x / px)) + self.M
 
     def raster_fill(self, g):
-        m = self.inside(g)
-        if not m.any() and g.area > (self.c.px ** 2) * .12:
-            pt = g.representative_point()
+        px = self.c.px
+        x0, y0, x1, y1 = g.bounds
+        big = max(x1 - x0, y1 - y0) / px
+        if big < 3.5:
+            # a tiny piece: a clean plus (a pixel flower) or a single pixel, never a stray shape
+            m = np.zeros(self.X.shape, bool)
+            if g.area < (px ** 2) * .12:
+                return m
+            pt = g.centroid if g.centroid.within(g) else g.representative_point()
             j, i = self.cell(pt.x, pt.y)
-            if 0 <= j < m.shape[0] and 0 <= i < m.shape[1]:
-                m[j, i] = True
-        return m
+            if not (1 <= j < m.shape[0] - 1 and 1 <= i < m.shape[1] - 1):
+                return m
+            m[j, i] = True
+            if big >= 2.2:
+                if g.area / max(1e-6, (x1 - x0) * (y1 - y0)) > .72:     # a round dot: a 2 x 2 block
+                    cx, cy = (x0 + x1) / 2 / px + self.M, (y0 + y1) / 2 / px + self.M
+                    i0, j0 = int(round(cx - 1)), int(round(cy - 1))
+                    m[j, i] = False
+                    m[j0:j0 + 2, i0:i0 + 2] = True
+                else:                                                  # a flower or a star: a plus
+                    m[j - 1, i] = m[j + 1, i] = m[j, i - 1] = m[j, i + 1] = True
+            return m
+        return self.inside(g)
 
     def raster_line(self, line, w):
         px = self.c.px
@@ -985,7 +1073,7 @@ def pixel_object(grid, pieces, outline=True):
         po = p.po
         if po is None:
             ys, xs = np.nonzero(m)
-            po = p.kind == "fill" and p.lift > 0 and (np.ptp(ys) >= 3 and np.ptp(xs) >= 3)
+            po = p.kind == "fill" and p.lift > 0 and (np.ptp(ys) >= 4 and np.ptp(xs) >= 4)
         if po:
             ring = _dilate4(m) & ~m & (tid >= 0)
             tc[ring] = OL
@@ -993,7 +1081,7 @@ def pixel_object(grid, pieces, outline=True):
         tc[m] = col
         tid[m] = i
         own[i] = m
-        if p.kind == "button":
+        if p.kind == "button" and p.r >= 1.6 * c.px:
             j, ii = grid.cell(p.geom.x, p.geom.y)
             tc[j, ii] = dk(col, .35)
     # bevel: light top-left, dark bottom-right on each big lifted piece's own outline
@@ -1011,6 +1099,9 @@ def pixel_object(grid, pieces, outline=True):
         tc[mine & lt_ & ~dk_] = mix(col, "#FFFFFF", .4)
         tc[mine & dk_ & ~lt_] = mix(col, OL, .28)
     body = tid != -1
+    ys, xs = np.nonzero(body)
+    if len(ys) and min(np.ptp(ys), np.ptp(xs)) < 3:
+        outline = False       # tiny things (grass, sparkles) stay plain pixels
     if outline:
         ring = _dilate4(body) & ~body
         grid.canvas[ring] = OL
@@ -1074,9 +1165,24 @@ def pixel_write(c, grid):
     for cc in order[1:]:
         parts.append((cc, _rects(cv == cc)))
     out = []
-    for cc, rects in parts:
-        d = "".join(f"M{x} {y}h{w}v{h}h-{w}z" for x, y, w, h in rects)
-        out.append(f'<path d="{d}" fill="{cc}"/>')
+    for k, (cc, rects) in enumerate(parts):
+        if k == 0:      # the underlay is ONE fill path (two paths would show hairline seams where they meet)
+            out.append(f'<path d="{"".join(f"M{x} {y}h{w}v{h}h-{w}z" for x, y, w, h in rects)}" fill="{cc}"/>')
+            continue
+        tall = [r for r in rects if r[3] > 1]
+        flat = sorted((r for r in rects if r[3] == 1), key=lambda r: (r[1], r[0]))
+        if tall:
+            out.append(f'<path d="{"".join(f"M{x} {y}h{w}v{h}h-{w}z" for x, y, w, h in tall)}" fill="{cc}"/>')
+        if flat:
+            # one-pixel-high runs as a 1-wide stroke along the row's middle: M x y.5 h w m dx dy h w ...
+            d, cur = "", None
+            for x, y, w, h in flat:
+                if cur is None:
+                    d += f"M{x} {y}.5h{w}"
+                else:
+                    d += "m" + _join([str(x - cur[0]), str(y - cur[1])]) + f"h{w}"
+                cur = (x + w, y)
+            out.append(f'<path d="{d}" fill="none" stroke="{cc}" stroke-width="1"/>')
     c.body.append(f'<g transform="scale({c.px:g})">{"".join(out)}</g>')
 
 
@@ -1169,15 +1275,16 @@ def jelly_ground(c, p):
     rnd = c.rnd("cg")
     # soft frosting swirls
     sw = d.get("swirl", lt(d["top"], .45))
-    for i in range(int(c.W * c.H / 26000)):
-        x, y = rnd.uniform(-20, c.W + 20), rnd.uniform(-20, c.H + 20)
-        r = rnd.uniform(18, 40)
+    q = c.q
+    for i in range(int(c.vw * c.vh / 26000)):
+        x, y = rnd.uniform(-20 * q, c.W + 20 * q), rnd.uniform(-20 * q, c.H + 20 * q)
+        r = rnd.uniform(18, 40) * q
         a0 = rnd.uniform(0, 6.3)
         pts = [(x + math.cos(a0 + t) * r * (1 - t / 9), y + math.sin(a0 + t) * r * .55 * (1 - t / 9)) for t in np.linspace(0, 3.6, 16)]
         c.stroke(pd(pts, False), sw, 5 * c.u, .55)
     cols = d["sprinkles"]
     segs = {cc: [] for cc in cols}
-    cnt = int(c.W * c.H * d.get("n", 14) / 10000)
+    cnt = int(c.vw * c.vh * d.get("n", 14) / 10000)
     for k in range(cnt):
         x, y = rnd.uniform(3, c.W - 3), rnd.uniform(3, c.H - 3)
         a = rnd.uniform(0, math.pi)
@@ -1191,17 +1298,19 @@ def jelly_road(c, p, key):
     d = p.data
     u = c.u
     g = p.geom
-    wid = 2 * HALF if c.kind == "tile" else d.get("width", 2 * HALF)
+    wid = d.get("width", 2 * HALF) * c.q
     sh = affinity.translate(g, 1.2 * u, 3.4 * u).difference(g)
     c.fill(affinity.translate(g, 1.4 * u, 4.2 * u).buffer(1.4 * u).difference(g), d["shadow"], .1, tol=.2)
     c.fill(sh, d["shadow"], .2, tol=.2)
     c.fill(g, d["rim"], .82, tol=.15)
-    body = g.buffer(-.09 * wid)
+    c.fill(g.buffer(-.05 * wid), mix(d["rim"], d["body"], .5), .7, tol=.15)
+    body = g.buffer(-.1 * wid)
     c.fill(body, d["body"], .8, tol=.15)
     # darker refraction along the lower-right inside edge
-    c.fill(body.difference(affinity.translate(body, -.07 * wid, -.07 * wid)), d["rim"], .32, tol=.15)
-    c.fill(g.buffer(-.3 * wid), d["glow"], .35, tol=.15)
-    c.fill(g.buffer(-.38 * wid), d["glow"], .45, tol=.15)
+    c.fill(body.difference(affinity.translate(body, -.07 * wid, -.07 * wid)), d["rim"], .3, tol=.15)
+    # a soft light core (stacked see-through layers instead of a gradient along the road)
+    for k, op in ((.22, .14), (.27, .16), (.32, .2), (.37, .26), (.42, .3)):
+        c.fill(g.buffer(-k * wid), d["glow"], op, tol=.15)
     # the highlight streak: the part of an inset line that faces the top-left
     hl = g.buffer(-.22 * wid)
     segs = []
@@ -1234,12 +1343,13 @@ def jelly_road(c, p, key):
         dots = []
         for l in lines:
             ls = LineString(l)
-            t = 22.0
-            while t < ls.length - 8:
+            q = c.q
+            t = 22.0 * q
+            while t < ls.length - 8 * q:
                 pt = ls.interpolate(t)
-                if 8 < pt.x < c.W - 8 and 8 < pt.y < c.H - 8:
+                if 8 * q < pt.x < c.W - 8 * q and 8 * q < pt.y < c.H - 8 * q:
                     dots.append(pt)
-                t += 47.0
+                t += 47.0 * q
         for pt in dots:
             c.body.append(f'<circle cx="{n(pt.x + .05 * wid)}" cy="{n(pt.y + .09 * wid)}" r="{n(.035 * wid)}" fill="#FFFFFF" opacity=".9"/>')
 
@@ -1269,9 +1379,16 @@ def render_c(c, pieces):
 
 # ================================================================ render one file
 def render(pieces, style, kind, name, world=None):
+    """One SVG file of the given kind (KIND) from a list of pieces, in one style."""
     c = Ctx(name, style, kind, world)
     pieces = [p for p in pieces if p.only is None or style in p.only]
-    {"a": render_a, "b": render_b, "c": render_c}[style](c, pieces)
+    if c.q != 1:
+        pieces = place(pieces, s=c.q)
+    PQ[0] = 1 if c.q != 1 else 10
+    try:
+        {"a": render_a, "b": render_b, "c": render_c}[style](c, pieces)
+    finally:
+        PQ[0] = 10
     return c.svg()
 
 
@@ -1306,8 +1423,13 @@ def tile_geom(mask, ext=EXT):
     return g.buffer(r, join_style="round", quad_segs=16).buffer(-r, join_style="round", quad_segs=16)
 
 
-def road_piece(world, style, geom):
-    return Piece("road", geom, "#000000", data=world.road[style])
+def road_piece(world, style, geom, width=None):
+    """The road in one style. geom: the road shape, longer than the file where it goes on (tiles:
+    tile_geom()). width: the road's width when it is not a tile's (the jelly look scales with it)."""
+    data = dict(world.road[style])
+    if width:
+        data["width"] = width
+    return Piece("road", geom, "#000000", data=data)
 
 
 def ground_piece(world, style):

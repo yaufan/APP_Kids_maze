@@ -13,7 +13,7 @@ A round brown mole with a pink nose, little pink paws and a yellow hard hat with
 import math
 
 import kit
-from kit import BTN, E, EYE, F, L, OBJ, R, U, crs, place, sbox
+from kit import E, EYE, F, L, OBJ, R, crs, place, sbox
 
 BODY, BODY_ST = "#8C6A57", "#C7A58F"
 BELLY, BELLY_ST = "#A8836E", "#CDAE98"

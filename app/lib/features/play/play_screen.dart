@@ -16,9 +16,11 @@ import 'board.dart';
 
 /// One level in a world: bring the hero home through a maze made for the
 /// child's age (docs/design.md). The finger drags the hero along the road,
-/// or taps ahead and the hero walks there by itself (stopping at forks);
-/// walls only go "boing". No clock, no score. 土豆 shows the way when asked,
-/// or (with many hints) after a while without getting anywhere new.
+/// or taps ahead and the hero walks there by itself (stopping at forks; a
+/// finger still down there then drags it on); walls only go "boing". Only
+/// the first finger counts. No clock, no score. 土豆 shows the way when
+/// asked, or (with many hints) once after a while without getting anywhere
+/// new; never while the app is in the background.
 class PlayScreen extends ConsumerStatefulWidget {
   const PlayScreen({super.key, required this.world, required this.mode});
 
@@ -28,15 +30,37 @@ class PlayScreen extends ConsumerStatefulWidget {
   /// How long the hero takes for one cell.
   static const step = Duration(milliseconds: 170);
 
-  /// With many hints, 土豆 shows the way after this long without a new cell.
+  /// With many hints, 土豆 shows the way after this long without a new cell
+  /// (once: the next one comes after the next new cell).
   static const autoHint = Duration(seconds: 20);
+
+  /// The longest the first line of a level is waited for before 土豆 talks
+  /// about forks and dead ends.
+  static const introAtMost = Duration(seconds: 12);
 
   @override
   ConsumerState<PlayScreen> createState() => PlayScreenState();
 }
 
-class PlayScreenState extends ConsumerState<PlayScreen> {
+class PlayScreenState extends ConsumerState<PlayScreen> with HushOnLeave {
   late final Sounds _sounds;
+  AppLifecycleListener? _life;
+
+  /// The finger that moves the hero (only the first one down counts), and
+  /// the cell under it.
+  int? _finger;
+  Cell? _fingerAt;
+
+  /// 「先拿鑰匙」 was said for this touch (once, however the finger moves).
+  var _shutSaid = false;
+
+  /// The level's first line (what to do) has been said: until then 土豆
+  /// says nothing about forks and dead ends, so it is not cut off.
+  var _introDone = true;
+
+  /// 土豆's own hint is still to come (it waits while the app is in the
+  /// background).
+  var _autoHintDue = false;
   late final math.Random _random;
   late Maze _maze;
   late Walk _walk;
@@ -71,6 +95,12 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
     _sounds = ref.read(soundsProvider);
     _random = ref.read(randomProvider);
     _sounds.hold(this, Music.of(_world));
+    _life = AppLifecycleListener(
+      onHide: () => _hintTimer?.cancel(),
+      onShow: () {
+        if (_autoHintDue) _startHintTimer();
+      },
+    );
     _deal();
     WidgetsBinding.instance.addPostFrameCallback((_) => _ask());
   }
@@ -80,18 +110,21 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
     for (final t in [_stepTimer, _hintTimer, _hintClear]) {
       t?.cancel();
     }
+    _life?.dispose();
     _sounds.release(this);
     super.dispose();
   }
 
   void _deal() {
     final g = ref.read(gameProvider);
-    _maze = Maze.make(_mode, g.settings.level.index < _mode.from.index ? _mode.from : g.settings.level, g.walkedIn(_world), _random);
+    _maze = Maze.make(_mode, g.settings.level.index < _mode.from.index ? _mode.from : g.settings.level, g.walkedWith(_world, _mode), _random);
     _walk = Walk(_maze);
     _queue.clear();
     _stepTimer?.cancel();
     _pending = null;
     _dragging = false;
+    _finger = null;
+    _fingerAt = null;
     _lastBump = null;
     _bumps = 0;
     _facingLeft = false;
@@ -108,34 +141,61 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
   /// Says [zh] (and [en] if the parent turned English on); completes when
   /// it has been said.
   Future<void> _say(String zh, {String? en}) async {
-    final s = ref.read(gameProvider).settings;
-    if (mounted && s.voice) await ref.read(voiceProvider).say(zh, en: s.english && en != null ? en : null);
+    if (mounted) await speak(ref, zh, en: en);
   }
 
-  void _setLine(String text, {String? en}) {
-    if (!mounted) return;
+  Future<void> _setLine(String text, {String? en}) {
+    if (!mounted) return Future.value();
     setState(() => _line = text);
-    _say(text, en: en);
+    return _say(text, en: en);
   }
 
-  void _ask() => _setLine(_prompt, en: '${_world.heroEn}, ${_world.homeEn}');
+  /// What to do in this level (forks and dead ends wait until it has been
+  /// said, at most [PlayScreen.introAtMost]).
+  void _ask() {
+    final round = _round;
+    _introDone = false;
+    void done() {
+      if (mounted && round == _round) _introDone = true;
+    }
+
+    _setLine(_prompt, en: '${_world.heroEn}, ${_world.homeEn}').timeout(PlayScreen.introAtMost).then((_) => done(), onError: (_) => done());
+  }
 
   // ---- the finger
 
-  void _down(Cell c) {
-    if (_done) return;
+  void _down(Cell c, int pointer) {
+    if (_done || _finger != null) return;
+    _finger = pointer;
+    _fingerAt = c;
+    _shutSaid = false;
     _dragging = c == _walk.at || c.distance(_walk.at) == 1;
     _target(c, tap: !_dragging);
   }
 
-  void _move(Cell c) {
-    if (_done || !_dragging) return;
+  void _move(Cell c, int pointer) {
+    if (_done || pointer != _finger) return;
+    _fingerAt = c;
+    if (!_dragging) {
+      // Tapped ahead of the hero and still down: once the hero is there
+      // (or next to the finger), it follows the finger.
+      if (_queue.isNotEmpty || (c != _walk.at && c.distance(_walk.at) > 1)) return;
+      _dragging = true;
+    }
     _target(c, tap: false);
   }
 
-  void _up() {
+  void _up(int pointer, {bool cancel = false}) {
+    if (pointer != _finger) return;
+    _finger = null;
+    _fingerAt = null;
     _dragging = false;
     _lastBump = null;
+    if (cancel) {
+      // Not a touch after all (the phone took it back): the hero stops.
+      _pending = null;
+      _queue.clear();
+    }
   }
 
   void _target(Cell c, {required bool tap}) {
@@ -145,6 +205,17 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
     }
     final steps = _walk.plan(c, tap: tap);
     if (steps.isEmpty) {
+      if (_walk.shutOut(c)) {
+        // Home, the gate or beyond it, before the key: say so, and the key
+        // lights up.
+        if (!_shutSaid) {
+          _shutSaid = true;
+          _sounds.play('bump');
+          _setLine(Strings.gateShut);
+          _showKey();
+        }
+        return;
+      }
       if (_walk.bumps(c) && c != _lastBump) {
         _lastBump = c;
         _sounds.play('bump');
@@ -167,7 +238,14 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
     if (_queue.isEmpty) {
       final p = _pending;
       _pending = null;
-      if (p != null && (p.$2 || _dragging)) _target(p.$1, tap: p.$2);
+      if (p != null && (p.$2 || _dragging)) {
+        _target(p.$1, tap: p.$2);
+      } else if (_finger != null && !_dragging) {
+        // There, and the finger is still down: it drags the hero on.
+        _dragging = true;
+        final at = _fingerAt;
+        if (at != null && at != _walk.at) _target(at, tap: false);
+      }
       return;
     }
     final c = _queue.removeAt(0);
@@ -186,19 +264,21 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
       _arrive();
       return;
     }
-    if (events.contains(Event.fork) && _mode != Mode.road && _queue.isEmpty && _saidForks.add(c)) {
+    // Not over the first line of the level (it would be cut off).
+    if (events.contains(Event.fork) && _mode != Mode.road && _queue.isEmpty && _introDone && _saidForks.add(c)) {
       _sounds.play('fork');
       _setLine(Strings.fork);
     }
-    if (events.contains(Event.deadEnd) && _saidDeadEnds.add(c)) _setLine(Strings.deadEnd);
+    if (events.contains(Event.deadEnd) && _introDone && _saidDeadEnds.add(c)) _setLine(Strings.deadEnd);
     _stepTimer = Timer(PlayScreen.step, _advance);
   }
 
   void _arrive() {
     _queue.clear();
+    _autoHintDue = false;
     _hintTimer?.cancel();
     final notifier = ref.read(gameProvider.notifier);
-    notifier.change((g) => g.home(_world));
+    notifier.change((g) => g.home(_world, _mode));
     final walked = ref.read(gameProvider).walkedIn(_world);
     _sounds.play('arrive');
     _sounds.play('cheer');
@@ -216,22 +296,45 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
 
   // ---- hints
 
+  /// A new cell or a new level: 土豆's own hint comes [PlayScreen.autoHint]
+  /// later if the hero gets nowhere new (with many hints).
   void _restartHintTimer() {
+    _autoHintDue = !_done && ref.read(gameProvider).settings.hints;
+    _startHintTimer();
+  }
+
+  void _startHintTimer() {
     _hintTimer?.cancel();
-    if (_done || !ref.read(gameProvider).settings.hints) return;
+    if (!_autoHintDue) return;
+    final st = WidgetsBinding.instance.lifecycleState;
+    // In the background it waits until the app is back.
+    if (st == AppLifecycleState.hidden || st == AppLifecycleState.paused || st == AppLifecycleState.detached) return;
     _hintTimer = Timer(PlayScreen.autoHint, _giveHint);
   }
 
   void _giveHint() {
     if (!mounted || _done) return;
+    // Once: 土豆 does not say it again and again (the next one by himself
+    // comes after the next new cell).
+    _autoHintDue = false;
+    _hintTimer?.cancel();
     _sounds.play('hint');
-    setState(() => _hint = _walk.hint());
+    _glow(_walk.hint());
     _setLine(Strings.hint);
+  }
+
+  /// Lights up [cells] for a few seconds.
+  void _glow(List<Cell> cells) {
+    setState(() => _hint = cells);
     _hintClear?.cancel();
     _hintClear = Timer(const Duration(seconds: 5), () {
       if (mounted) setState(() => _hint = const []);
     });
-    _restartHintTimer();
+  }
+
+  void _showKey() {
+    final key = _maze.key;
+    if (key != null) _glow([key]);
   }
 
   void _next() {
@@ -244,9 +347,11 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final style = ref.watch(gameProvider.select((g) => g.settings.style));
+    final style = ref.watch(styleProvider);
     final color = worldColor(_world);
-    return Scaffold(
+    return BackKey(
+      onBack: _toMap,
+      child: Scaffold(
       body: Sky(
         top: Color.lerp(color, Colors.white, 0.82)!,
         bottom: Felt.cream,
@@ -320,6 +425,7 @@ class PlayScreenState extends ConsumerState<PlayScreen> {
           ),
           if (_done) Arrived(world: _world, style: style, sticker: _sticker, onNext: _next, onMap: _toMap),
         ]),
+      ),
       ),
     );
   }

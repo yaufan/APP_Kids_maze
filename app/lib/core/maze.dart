@@ -136,8 +136,9 @@ class Maze {
     return [...path(start, k, blocked: {?gate})!, ...path(k, goal)!.skip(1)];
   }
 
-  /// A maze for [mode] at [level]; [n] is how many levels of this world
-  /// the child has done, which makes it a little bigger as they go.
+  /// A maze for [mode] at [level]; [n] is how many levels of this game in
+  /// this world the child has done, which makes it a little bigger as they
+  /// go (and 走迷宮's side roads more: other games do not count).
   factory Maze.make(Mode mode, Level level, int n, math.Random r) {
     final later = n >= 5;
     return switch ((mode, level)) {
@@ -374,6 +375,14 @@ class Walk {
       if (maze.fork(steps[i])) return steps.sublist(0, i + 1);
     }
     return steps;
+  }
+
+  /// Whether [target] is on the road but only the closed gate keeps the
+  /// hero from it: home, the gate itself or the road behind it, before the
+  /// key.
+  bool shutOut(Cell target) {
+    if (blocked.isEmpty || !maze.road(target) || target == at) return false;
+    return maze.path(at, target, blocked: blocked) == null && maze.path(at, target) != null;
   }
 
   /// Whether a finger at [target] presses against a wall (or the closed

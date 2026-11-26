@@ -10,7 +10,7 @@ import '../../core/maze.dart';
 /// The maze, drawn from its pieces (docs/art.md): the ground, scenery in
 /// the empty cells, a road tile in each road cell, the trail of footprints,
 /// stars, the key and gate, home, and the hero. A finger on it reports the
-/// cell under it.
+/// cell under it (and which finger it is).
 class Board extends StatelessWidget {
   const Board({
     super.key,
@@ -34,9 +34,11 @@ class Board extends StatelessWidget {
   /// Cells to light up (a hint).
   final List<Cell> hint;
   final bool facingLeft;
-  final void Function(Cell c)? onDown;
-  final void Function(Cell c)? onMove;
-  final VoidCallback? onUp;
+  /// A finger ([pointer]) down on, or moving over, the cell [c]; up, or
+  /// taken back by the phone ([cancel]).
+  final void Function(Cell c, int pointer)? onDown;
+  final void Function(Cell c, int pointer)? onMove;
+  final void Function(int pointer, {bool cancel})? onUp;
 
   /// How long the hero takes for one cell.
   final Duration step;
@@ -103,14 +105,14 @@ class Board extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onPointerDown: (e) {
               final c = cellAt(e.localPosition);
-              if (c != null) onDown?.call(c);
+              if (c != null) onDown?.call(c, e.pointer);
             },
             onPointerMove: (e) {
               final c = cellAt(e.localPosition);
-              if (c != null) onMove?.call(c);
+              if (c != null) onMove?.call(c, e.pointer);
             },
-            onPointerUp: (_) => onUp?.call(),
-            onPointerCancel: (_) => onUp?.call(),
+            onPointerUp: (e) => onUp?.call(e.pointer),
+            onPointerCancel: (e) => onUp?.call(e.pointer, cancel: true),
             child: board,
           ),
         );

@@ -22,7 +22,7 @@ class WorldScreen extends ConsumerStatefulWidget {
   ConsumerState<WorldScreen> createState() => _WorldScreenState();
 }
 
-class _WorldScreenState extends ConsumerState<WorldScreen> {
+class _WorldScreenState extends ConsumerState<WorldScreen> with HushOnLeave {
   late final Sounds _sounds;
 
   @override
@@ -40,8 +40,10 @@ class _WorldScreenState extends ConsumerState<WorldScreen> {
   }
 
   void _say(String zh) {
-    if (mounted && ref.read(gameProvider).settings.voice) ref.read(voiceProvider).say(zh);
+    if (mounted) speak(ref, zh);
   }
+
+  void _home() => context.canPop() ? context.pop() : context.go('/');
 
   void _play(Mode m) {
     _say(m.zh);
@@ -52,7 +54,7 @@ class _WorldScreenState extends ConsumerState<WorldScreen> {
   Widget build(BuildContext context) {
     final g = ref.watch(gameProvider);
     final w = widget.world;
-    return Scaffold(
+    return BackKey(onBack: _home, child: Scaffold(
       body: Sky(
         top: Color.lerp(worldColor(w), Colors.white, 0.82)!,
         bottom: Felt.cream,
@@ -61,7 +63,7 @@ class _WorldScreenState extends ConsumerState<WorldScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Row(children: [
-                RoundButton(label: Strings.home, icon: Icons.home_rounded, size: 50, onTap: () => context.canPop() ? context.pop() : context.go('/')),
+                RoundButton(label: Strings.home, icon: Icons.home_rounded, size: 50, onTap: _home),
                 const SizedBox(width: 10),
                 Pill(text: w.zh, color: worldColor(w)),
                 const SizedBox(width: 8),
@@ -83,7 +85,7 @@ class _WorldScreenState extends ConsumerState<WorldScreen> {
                     aspectRatio: 1.5,
                     child: FeltCard(
                       padding: const EdgeInsets.all(8),
-                      child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Art(artPath(g.settings.style, w, 'card'), fit: BoxFit.cover)),
+                      child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Art(artPath(ref.watch(styleProvider), w, 'card'), fit: BoxFit.cover)),
                     ),
                   ),
                 ),
@@ -106,7 +108,7 @@ class _WorldScreenState extends ConsumerState<WorldScreen> {
           ]),
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:maze_adventure/app/strings.dart';
 import 'package:maze_adventure/core/content.dart';
 import 'package:maze_adventure/core/game.dart';
 import 'package:maze_adventure/core/maze.dart';
+import 'package:maze_adventure/core/providers.dart';
 import 'package:maze_adventure/features/play/board.dart';
 import 'package:maze_adventure/features/play/play_screen.dart';
 
@@ -68,13 +69,14 @@ void main() {
       await app.tapLabel(Mode.maze.zh, ms: 1200);
       final same = play.maze;
       await app.tapLabel(Strings.switchStyle, ms: 1000);
-      expect(app.game.settings.style, Style.b);
+      expect(app.container.read(styleProvider), Style.b);
       expect(play.maze, same, reason: 'switching style keeps the maze');
       await play.shot(device, '08_style_b');
       await app.tapLabel(Strings.switchStyle, ms: 1000);
-      expect(app.game.settings.style, Style.c);
+      expect(app.container.read(styleProvider), Style.c);
       await play.shot(device, '09_style_c');
       await app.tapLabel(Strings.switchStyle, ms: 600);
+      expect(app.game.settings.style, Style.a, reason: 'the parent\'s style never changed');
       await app.tapLabel(Strings.home, ms: 800);
       await app.tapLabel(Strings.home, ms: 800);
       expect(app.location, '/');
@@ -226,13 +228,5 @@ class Play {
     }
   }
 
-  Future<void> answerGate() async {
-    const digits = {'零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9};
-    final parts = (find.textContaining('加').evaluate().first.widget as Text).data!.split(' ');
-    for (final d in '${digits[parts[0]]! + digits[parts[2]]!}'.split('')) {
-      await tester.tap(find.byKey(ValueKey('gate-key-$d')));
-      await app.settle(200);
-    }
-    await app.settle(800);
-  }
+  Future<void> answerGate() => app.answerGate();
 }

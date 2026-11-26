@@ -20,7 +20,7 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with HushOnLeave {
   late final Sounds _sounds;
   var _hello = 0;
   var _wiggle = 0;
@@ -40,8 +40,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _say(String zh, {String? en}) {
-    final s = ref.read(gameProvider).settings;
-    if (mounted && s.voice) ref.read(voiceProvider).say(zh, en: s.english ? en : null);
+    if (mounted) speak(ref, zh, en: en);
   }
 
   void _tudou() {
@@ -71,8 +70,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final style = ref.watch(gameProvider.select((g) => g.settings.style));
-    return Scaffold(
+    final style = ref.watch(styleProvider);
+    // The phone's back key does nothing on the home page (it never closes
+    // the app under a child's fingers).
+    return BackKey(child: Scaffold(
       body: Sky(
         top: Felt.cloth,
         bottom: Felt.cream,
@@ -145,7 +146,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           }),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -173,7 +174,7 @@ class WorldCard extends ConsumerWidget {
           child: Column(children: [
             Expanded(
               child: Stack(children: [
-                Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(14), child: Art(artPath(g.settings.style, world, 'card'), fit: BoxFit.cover))),
+                Positioned.fill(child: ClipRRect(borderRadius: BorderRadius.circular(14), child: Art(artPath(ref.watch(styleProvider), world, 'card'), fit: BoxFit.cover))),
                 if (!open)
                   Positioned.fill(
                     child: Container(

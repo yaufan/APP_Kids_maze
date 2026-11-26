@@ -161,11 +161,14 @@ void main() {
   test('progress and settings are kept, and a damaged save does not break the game', () {
     var g = const Game(settings: Settings(level: Level.big, minutes: 20, style: Style.c, hints: false, english: true));
     for (var i = 0; i < 12; i++) {
-      g = g.home(World.sea);
+      g = g.home(World.sea, i.isEven ? Mode.road : Mode.maze);
     }
-    g = g.home(World.city).rest(DateTime(2026, 11, 6, 10));
+    g = g.home(World.city, Mode.errand).rest(DateTime(2026, 11, 6, 10));
     final back = Game.fromJson(g.toJson());
     expect(back.walkedIn(World.sea), 12);
+    expect(back.walkedWith(World.sea, Mode.maze), 6, reason: 'each game counted apart too');
+    expect(back.walkedWith(World.city, Mode.errand), 1);
+    expect(back.walkedWith(World.city, Mode.road), 0);
     expect(back.stickers(World.sea), 10);
     expect(back.starsOf(World.sea), 3);
     expect(back.starsOf(World.city), 1);
@@ -178,14 +181,86 @@ void main() {
 
     final broken = Game.fromJson({
       'walked': {'sea': -1, 'city': 'x', 'snow': 4},
+      'byMode': {'sea': {'maze': -2, 'road': 3, 'fly': 1}, 'city': 7},
       'restSince': 3,
       'settings': {'level': 'giant', 'minutes': 8, 'style': 'q', 'voice': 'no'},
     });
     expect(broken.walked, {World.snow: 4});
+    expect(broken.byMode, {World.sea: {Mode.road: 3}});
     expect(broken.restSince, isNull);
     expect(broken.settings.level, Level.mid);
     expect(broken.settings.minutes, 15);
     expect(broken.settings.style, Style.a);
     expect(broken.settings.voice, isTrue);
   });
+  test('the sitting is kept: closed for less than ten minutes it goes on, longer is a new one', () {
+    final t = DateTime(2026, 11, 6, 10);
+    final g = const Game().played(const Duration(minutes: 12), t);
+    final back = Game.fromJson(g.toJson());
+    expect(back.sitting.played, const Duration(minutes: 12));
+    expect(back.sitting.seen, t);
+    expect(back.opened(t.add(const Duration(minutes: 9))).sitting.played, const Duration(minutes: 12), reason: 'the same sitting');
+    expect(back.opened(t.add(const Duration(minutes: 10))).sitting.played, Duration.zero, reason: 'a new sitting');
+    // A clock moved back while the app was closed: the sitting goes on, and
+    // the rest keeps the time it had left.
+    final resting = const Game().rest(t.subtract(const Duration(minutes: 20))).played(Duration.zero, t);
+    final early = resting.opened(t.subtract(const Duration(days: 1)));
+    expect(early.sitting.played, Duration.zero);
+    expect(early.resting(t.subtract(const Duration(days: 1)).add(const Duration(minutes: 39))), isTrue);
+    expect(early.resting(t.subtract(const Duration(days: 1)).add(const Duration(minutes: 41))), isFalse, reason: 'not a day longer');
+    expect(const Game().played(const Duration(minutes: 3), t).playOn().sitting.played, Duration.zero);
+    expect(Game.fromJson({'sitting': {'played': -5, 'seen': 3}}).sitting.played, Duration.zero);
+  });
+
+  test('the parent gate waits 1, 5, then 15 minutes, and a clock moved back cannot make it wait for ever', () {
+    var t = DateTime(2026, 11, 6, 10);
+    var lock = const GateLock();
+    for (final wait in [1, 5, 15, 15]) {
+      for (var i = 0; i < GateLock.missesToLock; i++) {
+        expect(lock.locked(t), isFalse);
+        lock = lock.miss(t);
+      }
+      expect(lock.locked(t), isTrue);
+      expect(lock.left(t), Duration(minutes: wait));
+      lock = GateLock.fromJson(lock.toJson());
+      expect(lock.locked(t.add(Duration(minutes: wait, seconds: -1))), isTrue, reason: 'kept in the save');
+      t = t.add(Duration(minutes: wait));
+    }
+    // The clock goes back a day during a wait: it waits its 15 minutes from now, no more.
+    final dayBefore = t.subtract(const Duration(days: 1));
+    final fixed = lock.checked(dayBefore);
+    expect(fixed.left(dayBefore), const Duration(minutes: 15));
+    expect(fixed.locked(dayBefore.add(const Duration(minutes: 15))), isFalse);
+    expect(identical(lock.checked(t), lock), isTrue);
+    expect(GateLock.fromJson({'misses': 9, 'locks': 'x'}).misses, GateLock.missesToLock - 1);
+  });
+
+  test('the closed gate: home, the gate and the road behind it say 「先拿鑰匙」 until the key is taken', () {
+    for (var seed = 0; seed < 100; seed++) {
+      final m = Maze.make(Mode.errand, Level.big, seed % 8, math.Random(seed));
+      final w = Walk(m);
+      expect(w.shutOut(m.goal), isTrue, reason: 'seed $seed');
+      expect(w.shutOut(m.gate!), isTrue);
+      expect(w.shutOut(m.key!), isFalse, reason: 'the key can be reached');
+      expect(w.shutOut(m.start), isFalse);
+      for (final c in m.path(m.start, m.key!, blocked: {m.gate!})!.skip(1)) {
+        w.step(c);
+      }
+      expect(w.hasKey, isTrue);
+      expect(w.shutOut(m.goal), isFalse, reason: 'the gate is open');
+    }
+    final road = Walk(Maze.make(Mode.maze, Level.mid, 0, math.Random(1)));
+    expect(road.shutOut(road.maze.goal), isFalse, reason: 'no gate');
+  });
+
+  test('走迷宮 gets its side roads from 走迷宮 only', () {
+    var g = const Game();
+    for (var i = 0; i < 7; i++) {
+      g = g.home(World.garden, Mode.road);
+    }
+    expect(g.walkedIn(World.garden), 7);
+    expect(g.walkedWith(World.garden, Mode.maze), 0);
+    expect(Maze.make(Mode.maze, Level.mid, g.walkedWith(World.garden, Mode.maze), math.Random(3)).forks, 1, reason: 'the first 走迷宮 has one side road');
+  });
+
 }

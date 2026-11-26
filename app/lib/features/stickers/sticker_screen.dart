@@ -27,12 +27,14 @@ class _StickerScreenState extends ConsumerState<StickerScreen> {
     setState(() => _world = w);
   }
 
+  void _home() => context.canPop() ? context.pop() : context.go('/');
+
   @override
   Widget build(BuildContext context) {
     final g = ref.watch(gameProvider);
-    final style = g.settings.style;
+    final style = ref.watch(styleProvider);
     final have = g.stickers(_world);
-    return Scaffold(
+    return BackKey(onBack: _home, child: Scaffold(
       body: Sky(
         top: const Color(0xFFFFEDE6),
         bottom: Felt.cream,
@@ -41,7 +43,7 @@ class _StickerScreenState extends ConsumerState<StickerScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: Row(children: [
-                RoundButton(label: Strings.home, icon: Icons.home_rounded, size: 50, onTap: () => context.canPop() ? context.pop() : context.go('/')),
+                RoundButton(label: Strings.home, icon: Icons.home_rounded, size: 50, onTap: _home),
                 const SizedBox(width: 10),
                 const Pill(text: Strings.stickers, color: Felt.coral),
                 const Spacer(),
@@ -124,6 +126,6 @@ class _StickerScreenState extends ConsumerState<StickerScreen> {
           ]),
         ),
       ),
-    );
+    ));
   }
 }
